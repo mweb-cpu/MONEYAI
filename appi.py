@@ -3,7 +3,8 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from predict_market import fetch_and_prepare_data, RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor
+from predict_market import fetch_and_prepare_data
 
 # Page Config
 st.set_page_config(page_title="Crypto AI Forecaster", layout="wide")
