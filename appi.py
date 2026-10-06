@@ -1,82 +1,94 @@
+import os
 import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+import pandas as pd
+from predict_market import fetch_and_prepare_data, RandomForestRegressor
 
-st.set_page_config(page_title="AI Crypto Forecast Interface", layout="wide")
-st.title("🤖 AI Crypto Percentage Return Forecaster")
+# Page Config
+st.set_page_config(page_title="Crypto AI Forecaster", layout="wide")
 
-# Sidebar Configuration
+st.title("📈 Crypto AI Market Forecaster")
+st.write("Predicting next-day cryptocurrency percentage returns using Random Forest and R Boruta feature selection.")
+
+# ---------------------------------------------------------
+# SIDEBAR CONFIGURATION
+# ---------------------------------------------------------
 st.sidebar.header("Model Settings")
-ticker = st.sidebar.text_input("Ticker Symbol", value="BTC-USD")
-n_trees = st.sidebar.slider("Number of Trees", 50, 300, 100, step=25)
-train_ratio = st.sidebar.slider("Training Split", 0.6, 0.9, 0.8, step=0.05)
+ticker = st.sidebar.text_input("Ticker Symbol", "BTC-USD")
+n_estimators = st.sidebar.slider("Number of Trees (n_estimators)", 10, 200, 100)
+test_size = st.sidebar.slider("Test Set Ratio", 0.10, 0.40, 0.20, step=0.05)
 
-if st.sidebar.button("Run Model & Forecast"):
-    with st.spinner("Fetching data and training Random Forest..."):
-        # 1. Download Data
-        df = yf.download(ticker, start="2023-01-01")
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+# Default list of all 11 engineered technical indicators
+DEFAULT_FEATURES = [
+    'Return', 'Return_Lag1', 'Return_Lag2', 'Return_Lag3', 
+    'Volatility_10', 'Volume', 'RSI', 
+    'MACD', 'MACD_Hist', 'BB_PctB', 'BB_Width'
+]
 
-        # 2. Feature Engineering
-        df['Return'] = df['Close'].pct_change()
-        df['Return_Lag1'] = df['Return'].shift(1)
-        df['Return_Lag2'] = df['Return'].shift(2)
-        df['Return_Lag3'] = df['Return'].shift(3)
-        df['Volatility_10'] = df['Return'].rolling(10).std()
+def load_selected_features():
+    """Reads features chosen by R Boruta if selected_features.txt exists."""
+    if os.path.exists("selected_features.txt"):
+        with open("selected_features.txt", "r") as f:
+            features = [line.strip() for line in f.readlines() if line.strip()]
+        if features:
+            return features, True
+    return DEFAULT_FEATURES, False
 
-        # RSI
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
-
-        # MACD
-        ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-        ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = (ema12 - ema26) / df['Close']
-        df['MACD_Hist'] = df['MACD'] - df['MACD'].ewm(span=9, adjust=False).mean()
-
-        # Bollinger Bands
-        bb_middle = df['Close'].rolling(20).mean()
-        bb_std = df['Close'].rolling(20).std()
-        df['BB_PctB'] = (df['Close'] - (bb_middle - bb_std * 2)) / (bb_std * 4)
-        df['BB_Width'] = (bb_std * 4) / bb_middle
-
-        df['Target_Return'] = df['Return'].shift(-1)
-        df.dropna(inplace=True)
-
-        # 3. Model Training (Update this features list based on R Boruta results)
-        features = [
-            'Return', 'Return_Lag1', 'Return_Lag2', 'Return_Lag3', 
-            'Volatility_10', 'Volume', 'RSI', 'MACD', 'MACD_Hist', 'BB_PctB', 'BB_Width'
-        ]
+# ---------------------------------------------------------
+# MAIN PIPELINE EXECUTION
+# ---------------------------------------------------------
+if st.button("Run Model & Forecast", type="primary"):
+    with st.spinner("Downloading price data and training model..."):
+        # 1. Fetch & prepare technical indicators from predict_market.py
+        df = fetch_and_prepare_data(ticker)
+        
+        # 2. Check for R Boruta features
+        features, uses_boruta = load_selected_features()
+        
+        if uses_boruta:
+            st.info(f"**Using {len(features)} R Boruta Confirmed Features:** `{', '.join(features)}`")
+        else:
+            st.warning("`selected_features.txt` not found in repo. Using all 11 default indicators.")
+        
         X = df[features]
         y = df['Target_Return']
-
-        split_idx = int(len(df) * train_ratio)
+        
+        # 3. Chronological Time-Series Split
+        split_idx = int(len(df) * (1 - test_size))
         X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
-
-        model = RandomForestRegressor(n_estimators=n_trees, random_state=42)
+        
+        # 4. Train Random Forest Model
+        model = RandomForestRegressor(n_estimators=n_estimators, random_state=42)
         model.fit(X_train, y_train)
         predictions = model.predict(X_test)
-
-        # 4. Display Outputs
-        latest_sample = X.tail(1)
-        next_pred = model.predict(latest_sample)[0]
-
+        
+        # 5. Next-Day Live Forecast
+        latest_features = X.tail(1)
+        next_day_pred = model.predict(latest_features)[0]
+        
+        # Display Signal Metrics
         col1, col2 = st.columns(2)
-        col1.metric("Predicted Next-Day Return", f"{next_pred:.2%}")
-        col2.metric("Trading Signal", "BUY 🟢" if next_pred > 0 else "SELL 🔴")
-
-        st.subheader("Predicted vs Actual Returns (Test Set)")
+        with col1:
+            st.metric(
+                label="Predicted Next-Day Return", 
+                value=f"{next_day_pred * 100:.2f}%"
+            )
+        with col2:
+            if next_day_pred > 0:
+                st.success("### Trading Signal: BUY / LONG 🟢")
+            else:
+                st.error("### Trading Signal: SELL / CASH 🔴")
+        
+        # 6. Test Set Performance Chart
+        st.subheader("Test Set Performance: Actual vs Predicted Daily Returns")
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(X_test.index, y_test, label="Actual Return", color="gray", alpha=0.6)
-        ax.plot(X_test.index, predictions, label="Predicted Return", color="crimson", linestyle="--")
+        ax.plot(y_test.index, y_test, label="Actual Return", color="gray", alpha=0.6)
+        ax.plot(y_test.index, predictions, label="Predicted Return", color="crimson", linestyle="--")
         ax.axhline(0, color="black", linestyle=":", alpha=0.5)
-        ax.legend()
+        ax.set_ylabel("Daily Return %")
+        ax.set_xlabel("Date")
+        ax.legend(loc="upper right")
+        ax.grid(True, linestyle="--", alpha=0.3)
         st.pyplot(fig)

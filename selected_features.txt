@@ -1,0 +1,8 @@
+BB_Width
+BB_PctB
+MACD_Hist
+MACD
+RSI
+Volatility_10
+Return_Lag1
+Return

@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -60,27 +61,40 @@ df.dropna(inplace=True)
 
 # Export engineered indicators to CSV for R statistical feature selection
 df.to_csv('btc_features.csv')
-print("✅ Saved 'btc_features.csv' for R feature selection.")
+print("✅ Saved 'btc_features.csv' for R feature selection.") 
 # ---------------------------------------------------------
 # 4. MODEL TRAINING
 # ---------------------------------------------------------
-# Include the new indicators in the features list
-features = [
+
+# Default list of all engineered features
+default_features = [
     'Return', 'Return_Lag1', 'Return_Lag2', 'Return_Lag3', 
     'Volatility_10', 'Volume', 'RSI', 
     'MACD', 'MACD_Hist', 'BB_PctB', 'BB_Width'
 ]
 
+# Check if R has generated selected_features.txt
+if os.path.exists('selected_features.txt'):
+    with open('selected_features.txt', 'r') as f:
+        features = [line.strip() for line in f.readlines() if line.strip()]
+    print(f"✅ Loaded {len(features)} Boruta confirmed features from 'selected_features.txt':")
+    print(features)
+else:
+    features = default_features
+    print("⚠️ 'selected_features.txt' not found. Using all default features.")
+
+# Subset feature matrix X using selected features
 X = df[features]
 y = df['Target_Return']
 
+# Time-series chronological split (80% train, 20% test)
 split_idx = int(len(df) * 0.8)
 X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
 y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
+# Train Random Forest Regressor
 model = RandomForestRegressor(n_estimators=100, random_state=42)
 model.fit(X_train, y_train)
-
 # ---------------------------------------------------------
 # 5. EVALUATION & IMPORTANCES
 # ---------------------------------------------------------

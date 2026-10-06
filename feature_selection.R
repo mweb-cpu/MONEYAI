@@ -25,3 +25,20 @@ print(attStats(boruta_output))
 
 # Plot feature importance rankings
 plot(boruta_output, las = 2, main = "Boruta Feature Importance Rankings", cex.axis = 0.7)
+
+# Extract statistics table
+stats <- attStats(boruta_output)
+
+# Filter for only confirmed features
+confirmed_features <- rownames(stats[stats$decision == "Confirmed", ])
+
+# If no features were confirmed, default to using all features
+if (length(confirmed_features) == 0) {
+  confirmed_features <- c('Return', 'Return_Lag1', 'Return_Lag2', 'Return_Lag3', 
+                          'Volatility_10', 'Volume', 'RSI', 
+                          'MACD', 'MACD_Hist', 'BB_PctB', 'BB_Width')
+}
+
+# Save confirmed feature names to a text file (one feature per line)
+writeLines(confirmed_features, "selected_features.txt")
+print("✅ Saved confirmed features to 'selected_features.txt'.")
