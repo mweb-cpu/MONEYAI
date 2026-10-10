@@ -3,42 +3,105 @@
 # ---------------------------------------------------------
 
 # Install Boruta package if not already present
-if (!require("Boruta")) install.packages("Boruta", repos = "https://cloud.r-project.org")
+if (!require("Boruta")) {
+  install.packages("Boruta", repos = "https://cloud.r-project.org")
+}
+
 library(Boruta)
+
+# ---------------------------------------------------------
+# 1. LOAD DATA
+# ---------------------------------------------------------
 
 # Load the dataset created by predict_market.py
 data <- read.csv("btc_features.csv", row.names = 1)
+
+# Remove missing values
 data <- na.omit(data)
 
-# Run Boruta algorithm on Target_Return using all 11 features
+# ---------------------------------------------------------
+# 2. RUN BORUTA FEATURE SELECTION
+# ---------------------------------------------------------
+
 set.seed(42)
+
 boruta_output <- Boruta(
-  Target_Return ~ Return + Return_Lag1 + Return_Lag2 + Return_Lag3 + 
-                  Volatility_10 + Volume + RSI + MACD + MACD_Hist + BB_PctB + BB_Width, 
-  data = data, 
+  Target_Return ~
+    Return +
+    Return_Lag1 +
+    Return_Lag2 +
+    Return_Lag3 +
+    Volatility_10 +
+    Volume +
+    RSI +
+    MACD +
+    MACD_Hist +
+    BB_PctB +
+    BB_Width,
+  data = data,
   doTrace = 2
 )
 
-# Display Decisions (Confirmed, Tentative, or Rejected)
+# ---------------------------------------------------------
+# 3. DISPLAY BORUTA DECISIONS
+# ---------------------------------------------------------
+
 print("--- BORUTA FEATURE SELECTION DECISIONS ---")
+
 print(attStats(boruta_output))
 
-# Plot feature importance rankings
-plot(boruta_output, las = 2, main = "Boruta Feature Importance Rankings", cex.axis = 0.7)
+# ---------------------------------------------------------
+# 4. PLOT FEATURE IMPORTANCE
+# ---------------------------------------------------------
 
-# Extract statistics table
+plot(
+  boruta_output,
+  las = 2,
+  main = "Boruta Feature Importance Rankings",
+  cex.axis = 0.7
+)
+
+# ---------------------------------------------------------
+# 5. EXTRACT CONFIRMED FEATURES
+# ---------------------------------------------------------
+
 stats <- attStats(boruta_output)
 
-# Filter for only confirmed features
-confirmed_features <- rownames(stats[stats$decision == "Confirmed", ])
+confirmed_features <- rownames(
+  stats[stats$decision == "Confirmed", ]
+)
 
-# If no features were confirmed, default to using all features
+# ---------------------------------------------------------
+# 6. DEFAULT TO ALL FEATURES IF NONE ARE CONFIRMED
+# ---------------------------------------------------------
+
 if (length(confirmed_features) == 0) {
-  confirmed_features <- c('Return', 'Return_Lag1', 'Return_Lag2', 'Return_Lag3', 
-                          'Volatility_10', 'Volume', 'RSI', 
-                          'MACD', 'MACD_Hist', 'BB_PctB', 'BB_Width')
+
+  confirmed_features <- c(
+    "Return",
+    "Return_Lag1",
+    "Return_Lag2",
+    "Return_Lag3",
+    "Volatility_10",
+    "Volume",
+    "RSI",
+    "MACD",
+    "MACD_Hist",
+    "BB_PctB",
+    "BB_Width"
+  )
 }
 
-# Save confirmed feature names to a text file (one feature per line)
-writeLines(confirmed_features, "selected_features.txt")
-print("✅ Saved confirmed features to 'selected_features.txt'.")
+# ---------------------------------------------------------
+# 7. SAVE SELECTED FEATURES
+# ---------------------------------------------------------
+
+writeLines(
+  confirmed_features,
+  "selected_features.txt"
+)
+
+print("Saved confirmed features to 'selected_features.txt'.")
+
+print("--- FEATURES USED BY RANDOM FOREST ---")
+print(confirmed_features)
